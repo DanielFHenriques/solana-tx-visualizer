@@ -1,4 +1,3 @@
-use crate::application::gateways::block_gateway::BlockGateway;
 use crate::domain::account::Account;
 use crate::domain::block::Block;
 use crate::domain::program::Program;
@@ -36,11 +35,6 @@ fn get_accounts(meta: &UiTransactionStatusMeta) -> HashMap<u8, Account> {
                     if let Some(pre_balance) = balance.ui_token_amount.ui_amount {
                         let account = Account::new(owner, balance.account_index, pre_balance);
                         accounts.insert(account.index, account);
-                    } else {
-                        println!(
-                            "No pre balance found for account index: {}",
-                            balance.account_index
-                        )
                     }
                 }
             }
@@ -135,8 +129,8 @@ fn get_account_pairs(
     return account_pairs;
 }
 
-impl BlockGateway for BlockGatewayImpl {
-    fn get_block(&self, block: u64) -> Result<Block, String> {
+impl BlockGatewayImpl {
+    pub fn get_block(&self, block: u64) -> Result<Block, String> {
         let client = RpcClient::new(&self.base_url);
         let rpc_block_config = RpcBlockConfig {
             transaction_details: Some(TransactionDetails::Full),
