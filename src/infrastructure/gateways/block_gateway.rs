@@ -1,3 +1,4 @@
+use crate::application::gateways::block_gateway::BlockGateway;
 use crate::domain::account::Account;
 use crate::domain::block::Block;
 use crate::domain::program::Program;
@@ -13,6 +14,7 @@ use std::collections::HashMap;
 
 const USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
+#[derive(Clone)]
 pub struct BlockGatewayImpl {
     base_url: String,
 }
@@ -129,8 +131,8 @@ fn get_account_pairs(
     return account_pairs;
 }
 
-impl BlockGatewayImpl {
-    pub fn get_block(&self, block: u64) -> Result<Block, String> {
+impl BlockGateway for BlockGatewayImpl {
+    fn get_block(&self, block: u64) -> Result<Block, String> {
         let client = RpcClient::new(&self.base_url);
         let rpc_block_config = RpcBlockConfig {
             transaction_details: Some(TransactionDetails::Full),
