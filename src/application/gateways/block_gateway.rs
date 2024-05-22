@@ -1,5 +1,5 @@
 use crate::domain::block::Block;
 
 pub trait BlockGateway {
-    fn get_latest_block(&self) -> Result<Block, String>;
+    fn get_block(&self, block: u64) -> Result<Block, String>;
 }
