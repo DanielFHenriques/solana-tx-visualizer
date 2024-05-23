@@ -37,6 +37,7 @@ impl<G: BlockGateway + Clone + Send + Sync + 'static> TrackerService<G> {
                 let unsubscribe_sender = unsubscribe_sender.clone();
                 let pubsub_client = Arc::clone(&pubsub_client);
                 let block_gateway = Arc::clone(&block_gateway);
+
                 async move {
                     let (mut slot_updates_notifications, slot_updates_unsubscribe) =
                         pubsub_client.slot_updates_subscribe().await?;
@@ -51,12 +52,8 @@ impl<G: BlockGateway + Clone + Send + Sync + 'static> TrackerService<G> {
                         .map_err(|e| format!("{}", e))
                         .expect("channel");
 
-                    // Drop senders so that the channels can close.
-                    // The main task will receive until channels are closed.
                     drop((ready_sender, unsubscribe_sender));
 
-                    // Do something with the subscribed messages.
-                    // This loop will end once the main task unsubscribes.
                     while let Some(slot_info) = slot_updates_notifications.next().await {
                         if let SlotUpdate::Completed { slot, timestamp: _ } = slot_info {
                             if let Ok(block) = block_gateway.get_block(slot) {
