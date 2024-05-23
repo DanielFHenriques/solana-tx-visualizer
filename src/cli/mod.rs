@@ -12,8 +12,5 @@ pub struct Cli {
 pub enum Commands {
     #[command(name = "track")]
     #[command(about = "Track transactions for a given mint address")]
-    Track {
-        #[arg(short, long)]
-        mint: String,
-    },
+    Track {},
 }

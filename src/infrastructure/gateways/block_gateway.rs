@@ -3,7 +3,11 @@ use crate::domain::account::Account;
 use crate::domain::block::Block;
 use crate::domain::program::Program;
 use crate::domain::transaction::Transaction;
+use anyhow::Result;
+use futures_util::{Future, StreamExt};
+use solana_client::rpc_response::SlotUpdate;
 use solana_client::{rpc_client::RpcClient, rpc_config::RpcBlockConfig};
+use solana_pubsub_client::nonblocking::pubsub_client::PubsubClient;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_transaction_status::option_serializer::OptionSerializer;
 use solana_transaction_status::{
@@ -11,18 +15,23 @@ use solana_transaction_status::{
     UiTransactionEncoding, UiTransactionStatusMeta,
 };
 use std::collections::HashMap;
+use std::pin::Pin;
+use std::sync::Arc;
+use tokio::sync::mpsc::UnboundedSender;
 
 const USDC_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 #[derive(Clone)]
 pub struct BlockGatewayImpl {
-    base_url: String,
+    rpc_url: String,
+    websocket_url: String,
 }
 
 impl BlockGatewayImpl {
-    pub fn new<U: ToString>(base_url: U) -> Self {
+    pub fn new<U: ToString>(cluster: U) -> Self {
         Self {
-            base_url: base_url.to_string(),
+            rpc_url: format!("https://api.{}.solana.com", cluster.to_string()),
+            websocket_url: format!("wss://api.{}.solana.com/", cluster.to_string()),
         }
     }
 }
@@ -49,11 +58,6 @@ fn get_accounts(meta: &UiTransactionStatusMeta) -> HashMap<u8, Account> {
                 if account.index == balance.account_index {
                     if let Some(post_balance) = balance.ui_token_amount.ui_amount {
                         account.update_post_balance(post_balance);
-                    } else {
-                        println!(
-                            "No pre balance found for account index: {}",
-                            balance.account_index
-                        )
                     }
                 }
             }
@@ -132,8 +136,57 @@ fn get_account_pairs(
 }
 
 impl BlockGateway for BlockGatewayImpl {
+    async fn subscribe(
+        self: Arc<Self>,
+        ready_sender: &UnboundedSender<()>,
+        unsubscribe_sender: &UnboundedSender<
+            Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>,
+        >,
+        block_update_sender: &UnboundedSender<Block>,
+    ) -> Result<()> {
+        let pubsub_client = Arc::new(PubsubClient::new(&self.websocket_url.as_str()).await?);
+
+        tokio::spawn({
+            let ready_sender = ready_sender.clone();
+            let unsubscribe_sender = unsubscribe_sender.clone();
+            let block_update_sender = block_update_sender.clone();
+            let pubsub_client = Arc::clone(&pubsub_client);
+
+            async move {
+                let (mut slot_updates_notifications, slot_updates_unsubscribe) =
+                    pubsub_client.slot_updates_subscribe().await?;
+
+                // With the subscription started,
+                // send a signal back to the main task for synchronization.
+                ready_sender.send(()).expect("channel");
+
+                // Send the unsubscribe closure back to the main task.
+                unsubscribe_sender
+                    .send(slot_updates_unsubscribe)
+                    .map_err(|e| format!("{}", e))
+                    .expect("channel");
+
+                drop((ready_sender, unsubscribe_sender));
+
+                while let Some(slot_info) = slot_updates_notifications.next().await {
+                    if let SlotUpdate::Completed { slot, timestamp: _ } = slot_info {
+                        if let Ok(block) = self.get_block(slot) {
+                            block_update_sender.send(block).expect("channel");
+                        } else {
+                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                        }
+                    }
+                }
+
+                Ok::<_, anyhow::Error>(())
+            }
+        });
+
+        Ok(())
+    }
+
     fn get_block(&self, block: u64) -> Result<Block, String> {
-        let client = RpcClient::new(&self.base_url);
+        let client = RpcClient::new(&self.rpc_url);
         let rpc_block_config = RpcBlockConfig {
             transaction_details: Some(TransactionDetails::Full),
             commitment: Some(CommitmentConfig::finalized()),
@@ -143,9 +196,9 @@ impl BlockGateway for BlockGatewayImpl {
         };
 
         match client.get_block_with_config(block, rpc_block_config) {
-            Ok(block) => {
+            Ok(confirmed_block) => {
                 let mut block_transations: Vec<Transaction> = Vec::new();
-                let transactions = block.transactions.unwrap();
+                let transactions = confirmed_block.transactions.unwrap();
 
                 for transaction_with_meta in transactions {
                     let meta = transaction_with_meta.meta.unwrap();
@@ -201,7 +254,7 @@ impl BlockGateway for BlockGatewayImpl {
                     }
                 }
 
-                let b = Block::new(block.blockhash, block_transations);
+                let b = Block::new(block, confirmed_block.blockhash, block_transations);
                 return Ok(b);
             }
             Err(e) => {
