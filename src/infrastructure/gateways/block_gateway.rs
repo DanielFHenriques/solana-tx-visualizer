@@ -34,105 +34,113 @@ impl BlockGatewayImpl {
             websocket_url: format!("wss://api.{}.solana.com/", cluster.to_string()),
         }
     }
-}
 
-fn get_accounts(meta: &UiTransactionStatusMeta) -> HashMap<u8, Account> {
-    let mut accounts: HashMap<u8, Account> = HashMap::new();
+    fn get_accounts(&self, meta: &UiTransactionStatusMeta) -> HashMap<u8, Account> {
+        let mut accounts: HashMap<u8, Account> = HashMap::new();
 
-    if let OptionSerializer::Some(pre_token_balances) = &meta.pre_token_balances {
-        for balance in pre_token_balances {
-            if balance.mint == USDC_MINT {
-                if let OptionSerializer::Some(owner) = &balance.owner {
-                    if let Some(pre_balance) = balance.ui_token_amount.ui_amount {
-                        let account = Account::new(owner, balance.account_index, pre_balance);
-                        accounts.insert(account.index, account);
+        if let OptionSerializer::Some(pre_token_balances) = &meta.pre_token_balances {
+            for balance in pre_token_balances {
+                if balance.mint == USDC_MINT {
+                    if let OptionSerializer::Some(owner) = &balance.owner {
+                        if let Some(pre_balance) = balance.ui_token_amount.ui_amount {
+                            let account = Account::new(owner, balance.account_index, pre_balance);
+                            accounts.insert(account.index, account);
+                        }
                     }
                 }
             }
         }
-    }
 
-    if let OptionSerializer::Some(post_token_balances) = &meta.post_token_balances {
-        for account in accounts.values_mut() {
-            for balance in post_token_balances {
-                if account.index == balance.account_index {
-                    if let Some(post_balance) = balance.ui_token_amount.ui_amount {
-                        account.update_post_balance(post_balance);
+        if let OptionSerializer::Some(post_token_balances) = &meta.post_token_balances {
+            for account in accounts.values_mut() {
+                for balance in post_token_balances {
+                    if account.index == balance.account_index {
+                        if let Some(post_balance) = balance.ui_token_amount.ui_amount {
+                            account.update_post_balance(post_balance);
+                        }
                     }
                 }
             }
         }
+
+        return accounts;
     }
 
-    return accounts;
-}
+    fn get_program(
+        &self,
+        meta: &UiTransactionStatusMeta,
+        transaction: &UiTransaction,
+    ) -> Option<Program> {
+        let mut addresses: Vec<String> = Vec::new();
 
-fn get_program(meta: &UiTransactionStatusMeta, transaction: &UiTransaction) -> Option<Program> {
-    let mut addresses: Vec<String> = Vec::new();
-
-    if let UiMessage::Raw(message) = &transaction.message {
-        addresses.append(&mut message.account_keys.clone());
-    }
-
-    if let OptionSerializer::Some(loaded_addresses) = &meta.loaded_addresses {
-        let load_addresses_clone = loaded_addresses.clone();
-
-        addresses.append(&mut load_addresses_clone.writable.clone());
-        addresses.append(&mut load_addresses_clone.readonly.clone());
-    }
-
-    if let OptionSerializer::Some(pre_token_balances) = &meta.pre_token_balances {
-        for balance in pre_token_balances {
-            if balance.mint == USDC_MINT {
-                if let OptionSerializer::Some(program_id) = &balance.program_id {
-                    let mut account_keys = addresses.iter();
-                    let index = account_keys
-                        .position(|account| account == program_id)
-                        .unwrap();
-
-                    return Some(Program::new(program_id, index as u8));
-                }
-            }
+        if let UiMessage::Raw(message) = &transaction.message {
+            addresses.append(&mut message.account_keys.clone());
         }
-    }
 
-    return None;
-}
+        if let OptionSerializer::Some(loaded_addresses) = &meta.loaded_addresses {
+            let load_addresses_clone = loaded_addresses.clone();
 
-fn get_account_pairs(
-    program: &Program,
-    meta: &UiTransactionStatusMeta,
-    transaction: &UiTransaction,
-) -> Vec<(u8, u8)> {
-    let mut account_pairs: Vec<(u8, u8)> = Vec::new();
+            addresses.append(&mut load_addresses_clone.writable.clone());
+            addresses.append(&mut load_addresses_clone.readonly.clone());
+        }
 
-    if let UiMessage::Raw(message) = &transaction.message {
-        let _ = &message.instructions.iter().for_each(|instruction| {
-            if instruction.program_id_index == program.index && instruction.accounts.len() == 3 {
-                let source = instruction.accounts.get(0).unwrap();
-                let destination = instruction.accounts.get(1).unwrap();
+        if let OptionSerializer::Some(pre_token_balances) = &meta.pre_token_balances {
+            for balance in pre_token_balances {
+                if balance.mint == USDC_MINT {
+                    if let OptionSerializer::Some(program_id) = &balance.program_id {
+                        let mut account_keys = addresses.iter();
+                        let index = account_keys
+                            .position(|account| account == program_id)
+                            .unwrap();
 
-                account_pairs.push((source.to_owned(), destination.to_owned()));
-            }
-        });
-    }
-
-    if let OptionSerializer::Some(inner_instructions) = &meta.inner_instructions {
-        for inner_instruction in inner_instructions {
-            for instruction in &inner_instruction.instructions {
-                if let UiInstruction::Compiled(compiled) = &instruction {
-                    if compiled.program_id_index == program.index && compiled.accounts.len() == 3 {
-                        let source = compiled.accounts.get(0).unwrap();
-                        let destination = compiled.accounts.get(1).unwrap();
-
-                        account_pairs.push((source.to_owned(), destination.to_owned()));
+                        return Some(Program::new(program_id, index as u8));
                     }
                 }
             }
         }
+
+        return None;
     }
 
-    return account_pairs;
+    fn get_account_pairs(
+        &self,
+        program: &Program,
+        meta: &UiTransactionStatusMeta,
+        transaction: &UiTransaction,
+    ) -> Vec<(u8, u8)> {
+        let mut account_pairs: Vec<(u8, u8)> = Vec::new();
+
+        if let UiMessage::Raw(message) = &transaction.message {
+            let _ = &message.instructions.iter().for_each(|instruction| {
+                if instruction.program_id_index == program.index && instruction.accounts.len() == 3
+                {
+                    let source = instruction.accounts.get(0).unwrap();
+                    let destination = instruction.accounts.get(1).unwrap();
+
+                    account_pairs.push((source.to_owned(), destination.to_owned()));
+                }
+            });
+        }
+
+        if let OptionSerializer::Some(inner_instructions) = &meta.inner_instructions {
+            for inner_instruction in inner_instructions {
+                for instruction in &inner_instruction.instructions {
+                    if let UiInstruction::Compiled(compiled) = &instruction {
+                        if compiled.program_id_index == program.index
+                            && compiled.accounts.len() == 3
+                        {
+                            let source = compiled.accounts.get(0).unwrap();
+                            let destination = compiled.accounts.get(1).unwrap();
+
+                            account_pairs.push((source.to_owned(), destination.to_owned()));
+                        }
+                    }
+                }
+            }
+        }
+
+        return account_pairs;
+    }
 }
 
 impl BlockGateway for BlockGatewayImpl {
@@ -197,7 +205,7 @@ impl BlockGateway for BlockGatewayImpl {
 
         match client.get_block_with_config(block, rpc_block_config) {
             Ok(confirmed_block) => {
-                let mut block_transations: Vec<Transaction> = Vec::new();
+                let mut block = Block::new(block, confirmed_block.blockhash);
                 let transactions = confirmed_block.transactions.unwrap();
 
                 for transaction_with_meta in transactions {
@@ -210,14 +218,15 @@ impl BlockGateway for BlockGatewayImpl {
                     if let EncodedTransaction::Json(transaction) =
                         &transaction_with_meta.transaction
                     {
-                        let accounts_by_index = get_accounts(&meta);
+                        let accounts_by_index = self.get_accounts(&meta);
 
                         if accounts_by_index.len() == 0 {
                             continue;
                         }
 
-                        if let Some(program) = get_program(&meta, &transaction) {
-                            let account_pairs = get_account_pairs(&program, &meta, &transaction);
+                        if let Some(program) = self.get_program(&meta, &transaction) {
+                            let account_pairs =
+                                self.get_account_pairs(&program, &meta, &transaction);
 
                             if account_pairs.len() == 0 {
                                 continue;
@@ -233,29 +242,21 @@ impl BlockGateway for BlockGatewayImpl {
                                     None => return,
                                 };
 
-                                let destination_transfer_amount = destination_account.post_balance
-                                    - destination_account.pre_balance;
-
-                                if destination_transfer_amount <= 0.0 {
-                                    return;
-                                }
-
                                 let transaction = Transaction::new(
                                     transaction.signatures.get(0).unwrap().to_owned(),
                                     source_account,
                                     destination_account,
                                     program.clone(),
-                                    destination_transfer_amount,
                                     USDC_MINT.to_owned(),
                                 );
-                                block_transations.push(transaction);
+
+                                block.add_transaction(transaction);
                             });
                         }
                     }
                 }
 
-                let b = Block::new(block, confirmed_block.blockhash, block_transations);
-                return Ok(b);
+                return Ok(block);
             }
             Err(e) => {
                 return Err(e.to_string());

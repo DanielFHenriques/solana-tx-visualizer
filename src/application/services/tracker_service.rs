@@ -36,7 +36,9 @@ impl<G: BlockGateway + Clone + Send + Sync + 'static> TrackerService<G> {
             for transaction in block.transactions {
                 println!(
                     "TX detected: {:?} sent {:?} USDC to {:?}",
-                    transaction.source.address, transaction.amount, transaction.destination.address
+                    transaction.source.address,
+                    transaction.amount(),
+                    transaction.destination.address
                 );
             }
         }
