@@ -5,11 +5,11 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc::unbounded_channel;
 
-pub struct TrackerService<G> {
+pub struct TrackService<G> {
     block_gateway: G,
 }
 
-impl<G: BlockGateway + Clone + Send + Sync + 'static> TrackerService<G> {
+impl<G: BlockGateway + Clone + Send + Sync + 'static> TrackService<G> {
     pub fn new(block_gateway: G) -> Self {
         Self { block_gateway }
     }

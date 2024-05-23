@@ -28,7 +28,7 @@ impl Transaction {
     }
 
     pub fn amount(&self) -> f64 {
-        self.destination.post_balance - self.source.pre_balance
+        self.destination.post_balance - self.destination.pre_balance
     }
 }
 

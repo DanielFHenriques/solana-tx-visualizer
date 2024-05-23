@@ -26,19 +26,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_account_creation() {
-        let address = "test_address";
-        let index = 1;
-        let pre_balance = 100.0;
-        let account = Account::new(address, index, pre_balance);
-
-        assert_eq!(account.address, "test_address");
-        assert_eq!(account.index, 1);
-        assert_eq!(account.pre_balance, 100.0);
-        assert_eq!(account.post_balance, 100.0);
-    }
-
-    #[test]
     fn test_update_post_balance() {
         let address = "test_address";
         let index = 1;

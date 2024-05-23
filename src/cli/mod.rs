@@ -11,6 +11,15 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     #[command(name = "track")]
-    #[command(about = "Track transactions for a given mint address")]
-    Track {},
+    #[command(about = "Track transactions for a given cluster")]
+    Track {
+        #[arg(short, long, default_value = "mainnet-beta")]
+        cluster: String,
+    },
+    Block {
+        #[arg(short, long, default_value = "mainnet-beta")]
+        cluster: String,
+        #[arg(short, long)]
+        block_id: u64,
+    },
 }
